@@ -4,19 +4,30 @@ import os
 import configparser
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+
 # Configuration file path
 HOME_CONFIG = os.path.expanduser('~/.radio.conf')
 CONFIG_PATH = HOME_CONFIG
-
-# Load settings
-cfg = configparser.ConfigParser()
-cfg.read(CONFIG_PATH)
 
 # Shared palette/styles helper
 STYLE_SHEET = (
     "QWidget { background: black; color: lightgreen; }"
     "QTabBar::tab { padding: 8px; }"
 )
+
+
+def load_config(config_path):
+    """Load the configuration file and handle errors gracefully"""
+    cfg = configparser.ConfigParser()
+    if not os.path.exists(config_path):
+        print(f"Warning: Configuration file not found at {config_path}. Using defaults.")
+    else:
+        try:
+            cfg.read(config_path)
+        except configparser.Error as e:
+            print(f"Error reading configuration file: {e}")
+    return cfg
+
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -45,21 +56,18 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(tabs)
 
         # Load and add tabs in order: Pat, GPS, Config
-        import pat_tab
-        import gps_tab
-        import config_tab
+        try:
+            import pat_tab
+            import gps_tab
+            import config_tab
+        except ImportError as e:
+            print(f"Error importing tab modules: {e}")
+            sys.exit(1)
 
-        pat_win = pat_tab.MainWindow()
-        self.prepare_child(pat_win)
-        tabs.addTab(pat_win.centralWidget(), QtGui.QIcon.fromTheme('media-playback-start'), 'Pat')
-
-        gps_win = gps_tab.GPSWindow()
-        self.prepare_child(gps_win)
-        tabs.addTab(gps_win.centralWidget(), QtGui.QIcon.fromTheme('gps'), 'GPS')
-
-        cfg_win = config_tab.ConfigWindow()
-        self.prepare_child(cfg_win)
-        tabs.addTab(cfg_win.centralWidget(), QtGui.QIcon.fromTheme('configure'), 'Configure')
+        # Adding tabs dynamically
+        self.add_tab(tabs, pat_tab.MainWindow, 'Pat', 'media-playback-start')
+        self.add_tab(tabs, gps_tab.GPSWindow, 'GPS', 'gps')
+        self.add_tab(tabs, config_tab.ConfigWindow, 'Configure', 'configure')
 
         # Timer for system time
         timer = QtCore.QTimer(self)
@@ -68,7 +76,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_system_time()
 
     def apply_shared_style(self):
-        # Use QApplication from QtWidgets, not QtGui
+        """Apply shared styles and palette"""
         app = QtWidgets.QApplication.instance()
         if app:
             pal = app.palette()
@@ -76,9 +84,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setStyleSheet(STYLE_SHEET)
 
     def build_header(self):
+        """Build the header layout with callsign, time, date, and grid"""
         cfg_qt = QtCore.QSettings(CONFIG_PATH, QtCore.QSettings.IniFormat)
-        call = cfg_qt.value('rigctld/my_call', '')
-        grid = cfg_qt.value('rigctld/my_grid', '')
+        call = cfg_qt.value('rigctld/my_call', 'Unknown')
+        grid = cfg_qt.value('rigctld/my_grid', 'Unknown')
 
         hdr = QtWidgets.QHBoxLayout()
         lblCall = QtWidgets.QLabel(f"My Call: {call}")
@@ -104,20 +113,30 @@ class MainWindow(QtWidgets.QMainWindow):
         return hdr
 
     def update_system_time(self):
+        """Update the displayed system time and date"""
         now = QtCore.QDateTime.currentDateTime()
         self.lblTime.setText(now.toString('HH:mm:ss'))
         self.lblDate.setText(now.toString('yyyy-MM-dd'))
 
+    def add_tab(self, tabs, window_class, name, icon_theme):
+        """Add a tab dynamically"""
+        try:
+            win = window_class()
+            self.prepare_child(win)
+            icon = QtGui.QIcon.fromTheme(icon_theme)
+            tabs.addTab(win.centralWidget(), icon, name)
+        except Exception as e:
+            print(f"Error adding tab {name}: {e}")
+
     def prepare_child(self, win):
-        # Ensure child windows use the shared style
-        # If the child has its own apply_shared_palette, call it
+        """Ensure child windows use the shared style"""
         if hasattr(win, 'apply_shared_palette'):
             win.apply_shared_palette()
         win.setStyleSheet(STYLE_SHEET)
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
-
+    sys.exit(app.exec())
